@@ -24,3 +24,7 @@ docker run -d \
 ```
 docker logs mtg
 ```
+一键交互脚本
+```
+wget -N --no-check-certificate https://raw.githubusercontent.com/shidahuilang/mtg/refs/heads/main/tg.install.sh && chmod +x tg.install.sh && bash tg.install.sh
+```
