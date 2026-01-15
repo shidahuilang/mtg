@@ -3,7 +3,8 @@ set -e
 
 # 默认配置
 PORT=${PORT:-443}
-DOMAIN=${DOMAIN:-hostupdate.vmware.com}
+# 支持 FAKEDOMAIN(优先) 和 DOMAIN(向后兼容)
+DOMAIN=${FAKEDOMAIN:-${DOMAIN:-hostupdate.vmware.com}}
 HOST_IP=${HOST_IP:-$(curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 ip.sb || echo "0.0.0.0")}
 
 DATA_DIR=/data
