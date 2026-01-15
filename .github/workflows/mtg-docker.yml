@@ -1,0 +1,122 @@
+name: Build and Push Multi-Arch Docker Image
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+env:
+  # 镜像名称(可修改为您的用户名/仓库名)
+  DOCKERHUB_IMAGE: shidahuilang/mtg
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  # MTG 版本
+  MTG_VERSION: v2.1.7
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1️⃣ 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ 下载 MTG 二进制文件(使用缓存)
+      - name: Cache MTG binaries
+        id: cache-mtg
+        uses: actions/cache@v3
+        with:
+          path: bin/
+          key: mtg-binaries-${{ env.MTG_VERSION }}
+
+      - name: Download MTG binaries
+        if: steps.cache-mtg.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p bin
+          
+          echo "📥 Downloading MTG ${{ env.MTG_VERSION }} binaries..."
+          
+          # 下载 amd64
+          echo "Downloading amd64..."
+          curl -L "https://github.com/9seconds/mtg/releases/download/${{ env.MTG_VERSION }}/mtg-${MTG_VERSION#v}-linux-amd64.tar.gz" -o /tmp/mtg-amd64.tar.gz
+          tar -xzf /tmp/mtg-amd64.tar.gz -C /tmp
+          mv /tmp/mtg-${MTG_VERSION#v}-linux-amd64/mtg bin/mtg-amd64
+          chmod +x bin/mtg-amd64
+          
+          # 下载 arm64
+          echo "Downloading arm64..."
+          curl -L "https://github.com/9seconds/mtg/releases/download/${{ env.MTG_VERSION }}/mtg-${MTG_VERSION#v}-linux-arm64.tar.gz" -o /tmp/mtg-arm64.tar.gz
+          tar -xzf /tmp/mtg-arm64.tar.gz -C /tmp
+          mv /tmp/mtg-${MTG_VERSION#v}-linux-arm64/mtg bin/mtg-arm64
+          chmod +x bin/mtg-arm64
+          
+          # 清理临时文件
+          rm -rf /tmp/mtg-*.tar.gz /tmp/mtg-*-linux-*
+          
+          echo "✅ MTG binaries downloaded successfully"
+          ls -lh bin/
+
+      # 3️⃣ 设置 QEMU (支持多架构模拟)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 4️⃣ 设置 Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 5️⃣ 提取 Docker 元数据(标签和注释)
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # 6️⃣ 登录 Docker Hub
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 7️⃣ 登录 GitHub Container Registry
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 8️⃣ 构建并推送多架构镜像
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 9️⃣ 输出镜像信息
+      - name: Image digest
+        run: echo "Image pushed with digest ${{ steps.meta.outputs.digest }}"
