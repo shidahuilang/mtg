@@ -12,7 +12,7 @@ on:
 env:
   # 镜像名称(可修改为您的用户名/仓库名)
   DOCKERHUB_IMAGE: shidahuilang/mtg
-  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/mtg
   # MTG 版本
   MTG_VERSION: v2.1.7
 
