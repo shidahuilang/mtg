@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 
 env:
+  # 镜像名称(可修改为您的用户名/仓库名)
   DOCKERHUB_IMAGE: shidahuilang/mtg
   GHCR_IMAGE: ghcr.io/${{ github.repository }}
   # MTG 版本
@@ -118,4 +119,14 @@ jobs:
 
       # 9️⃣ 输出镜像信息
       - name: Image digest
-        run: echo "Image pushed with digest ${{ steps.meta.outputs.digest }}"
+        run: |
+          echo "✅ 镜像构建并推送成功!"
+          echo ""
+          echo "📦 推送的镜像标签:"
+          echo "${{ steps.meta.outputs.tags }}"
+          echo ""
+          echo "🔐 镜像摘要: ${{ steps.meta.outputs.digest }}"
+          echo ""
+          echo "💡 用户可以通过以下命令拉取最新镜像:"
+          echo "   docker pull ${{ env.DOCKERHUB_IMAGE }}:latest"
+
