@@ -1,0 +1,95 @@
+name: Build and Push Multi-Arch Docker Image
+
+on:
+  push:
+    branches: ["main", "master"]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+env:
+  DOCKERHUB_IMAGE: shidahuilang/mtg
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/mtg
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: |
+          bash -n entrypoint.sh tg.install.sh tests/entrypoint-smoke.sh
+          bash tests/entrypoint-smoke.sh
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Verify architecture-specific Dockerfiles
+        run: |
+          docker buildx build --platform linux/amd64 --load -t mtg-check:amd64 .
+          docker run --rm --platform linux/amd64 --entrypoint sh mtg-check:amd64 -c \
+            'test "$(dd if=/usr/bin/telemt bs=1 skip=18 count=2 2>/dev/null | od -An -tx1 | tr -d " \n")" = 3e00'
+          docker buildx build --platform linux/arm64 --load -t mtg-check:arm64 .
+          docker run --rm --platform linux/arm64 --entrypoint sh mtg-check:arm64 -c \
+            'test "$(dd if=/usr/bin/telemt bs=1 skip=18 count=2 2>/dev/null | od -An -tx1 | tr -d " \n")" = b700'
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image digest
+        run: |
+          echo "✅ 镜像构建并推送成功! 双引擎: telemt (Rust) + mtg-go (Go)"
+          echo "📦 推送的镜像标签:"
+          echo "${{ steps.meta.outputs.tags }}"
+          echo ""
+          echo "💡 拉取: docker pull ${{ env.DOCKERHUB_IMAGE }}:latest"

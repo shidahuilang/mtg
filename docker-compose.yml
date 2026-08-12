@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  mtg:
+    image: shidahuilang/mtg:latest
+    container_name: mtg
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./data:/data
+    environment:
+      - PORT=8443
+      - FAKEDOMAIN=www.apple.com
+      - ENGINE=telemt
+      - IP_MODE=v4
+      - TZ=Asia/Shanghai
+    user: root
